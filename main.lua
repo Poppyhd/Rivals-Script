@@ -11,13 +11,14 @@ local camera = workspace.CurrentCamera
 -- SETTINGS & MUTABLE HOTKEYS
 ------------------------------------------------
 local KEY = "9196"
-local TROLL_KEY = "3443"
+local TROLL_KEY = "3883"
 local DISCORD = "https://discord.gg/aDbpyaN4Z6"
-local LOGO_ASSET_ID = "rbxassetid://1234567890" 
+local LOGO_ASSET_ID = "rbxassetid://1234567890"
 
 -- Konfigurierbare Hotkeys
 local menuHotkey = Enum.KeyCode.LeftControl
 local tpHotkey = Enum.KeyCode.Y
+local autoShootHotkey = Enum.KeyCode.H
 
 local PLACES = {
     BRAINROT = 109983668079237,
@@ -28,6 +29,10 @@ local PLACES = {
 local trollTabUnlocked = false
 local scriptRunning = true
 local connections = {}
+
+local listeningForMenu = false
+local listeningForTP = false
+local listeningForShoot = false
 
 ------------------------------------------------
 -- GUI BASE
@@ -43,8 +48,8 @@ main.Position = UDim2.new(0.5, -230, 0.5, -310)
 main.BackgroundColor3 = Color3.fromRGB(18, 18, 23)
 main.Visible = false
 main.Parent = gui
-
 Instance.new("UICorner", main).CornerRadius = UDim.new(0, 18)
+
 local stroke = Instance.new("UIStroke", main)
 stroke.Color = Color3.fromRGB(0, 255, 200)
 stroke.Thickness = 1.8
@@ -74,12 +79,14 @@ table.insert(connections, topBar.InputBegan:Connect(function(input)
         dragInput = input
     end
 end))
+
 table.insert(connections, UIS.InputChanged:Connect(function(input)
     if dragging and input == dragInput then
         local delta = input.Position - dragStart
         main.Position = UDim2.new(0, main.Position.X.Offset + delta.X, 0, main.Position.Y.Offset + delta.Y)
     end
 end))
+
 table.insert(connections, topBar.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
 end))
@@ -153,7 +160,6 @@ discordBtn.Parent = login
 Instance.new("UICorner", discordBtn).CornerRadius = UDim.new(0,12)
 
 local isLoggedIn = false
-
 table.insert(connections, loginBtn.MouseButton1Click:Connect(function()
     if keyBox.Text == KEY then
         isLoggedIn = true
@@ -222,6 +228,7 @@ content.Position = UDim2.new(0.025,0,0,135)
 content.BackgroundTransparency = 1
 content.ScrollBarThickness = 5
 content.Parent = main
+
 local list = Instance.new("UIListLayout", content)
 list.Padding = UDim.new(0, 8)
 list.SortOrder = Enum.SortOrder.LayoutOrder
@@ -244,16 +251,17 @@ end
 local infJumpEnabled = false
 local currentSpeed = 16
 
-table.insert(connections, movementTab.MouseButton1Click:Connect(function()
+-- Funktion ausgelagert, damit wir sie am Ende manuell aufrufen können
+local function loadMovementMenu()
     content:ClearAllChildren()
     Instance.new("UIListLayout", content).Padding = UDim.new(0,8)
-
+    
     local speedFrame = Instance.new("Frame")
     speedFrame.Size = UDim2.new(1, -12, 0, 55)
     speedFrame.BackgroundColor3 = Color3.fromRGB(30,30,37)
     speedFrame.Parent = content
     Instance.new("UICorner", speedFrame).CornerRadius = UDim.new(0, 12)
-
+    
     local speedLabel = Instance.new("TextLabel")
     speedLabel.Size = UDim2.new(0.4, 0, 1, 0)
     speedLabel.BackgroundTransparency = 1
@@ -262,7 +270,7 @@ table.insert(connections, movementTab.MouseButton1Click:Connect(function()
     speedLabel.TextScaled = true
     speedLabel.Font = Enum.Font.GothamSemibold
     speedLabel.Parent = speedFrame
-
+    
     local speedInput = Instance.new("TextBox")
     speedInput.Size = UDim2.new(0.55, 0, 0.7, 0)
     speedInput.Position = UDim2.new(0.4, 0, 0.15, 0)
@@ -273,17 +281,19 @@ table.insert(connections, movementTab.MouseButton1Click:Connect(function()
     speedInput.Font = Enum.Font.GothamBold
     speedInput.Parent = speedFrame
     Instance.new("UICorner", speedInput).CornerRadius = UDim.new(0, 8)
-
+    
     table.insert(connections, speedInput.FocusLost:Connect(function()
         local value = tonumber(speedInput.Text)
         if value then currentSpeed = value else speedInput.Text = tostring(currentSpeed) end
     end))
-
+    
     makeButton("Infinity Jump: " .. (infJumpEnabled and "ON" or "OFF"), function(btn)
         infJumpEnabled = not infJumpEnabled
         btn.Text = "Infinity Jump: " .. (infJumpEnabled and "ON" or "OFF")
     end)
-end))
+end
+
+table.insert(connections, movementTab.MouseButton1Click:Connect(loadMovementMenu))
 
 table.insert(connections, RunService.PreRender:Connect(function(deltaTime)
     if not scriptRunning then return end
@@ -305,73 +315,89 @@ table.insert(connections, UIS.JumpRequest:Connect(function()
     end
 end))
 
--- ==================== COMBAT (AIMBOT LOCK & WAFFEN POSITION FIX) ====================
+-- ==================== COMBAT + AUTO SHOOT ====================
 local aimbotEnabled = false
-local FOVRadius = 400
 
 local function getClosestPlayerToCrosshair()
-    local closestPlayer = nil
-    local shortestDistance = FOVRadius
+    local closestTarget = nil
+    local shortestDistance = 600
     local mousePos = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
-
+    
     for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+        if p ~= player and p.Character then
             local humanoid = p.Character:FindFirstChildOfClass("Humanoid")
             if humanoid and humanoid.Health > 0 then
-                -- Target entweder Kopf (wenn da) oder Torso
-                local targetPart = p.Character:FindFirstChild("Head") or p.Character.HumanoidRootPart
-                local screenPos, onScreen = camera:WorldToViewportPoint(targetPart.Position)
-                
-                if onScreen then
-                    local raycastParams = RaycastParams.new()
-                    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-                    raycastParams.FilterDescendantsInstances = {player.Character, camera, workspace:FindFirstChild("Camera")}
-                    
-                    local rayDirection = (targetPart.Position - camera.CFrame.Position)
-                    local result = workspace:Raycast(camera.CFrame.Position, rayDirection, raycastParams)
-                    
-                    if not result or result.Instance:IsDescendantOf(p.Character) then
+                local targetPart = p.Character:FindFirstChild("Head") or p.Character:FindFirstChild("HumanoidRootPart")
+                if targetPart then
+                    local screenPos, onScreen = camera:WorldToViewportPoint(targetPart.Position)
+                    if onScreen then
                         local distance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
                         if distance < shortestDistance then
                             shortestDistance = distance
-                            closestPlayer = targetPart -- Gibt das exakte Zielobjekt zurück
+                            closestTarget = targetPart
                         end
                     end
                 end
             end
         end
     end
-    return closestPlayer
+    return closestTarget
 end
+
+local autoShootEnabled = false
+
+table.insert(connections, RunService.RenderStepped:Connect(function()
+    if scriptRunning and aimbotEnabled then
+        local targetPart = getClosestPlayerToCrosshair()
+        if targetPart then
+            camera.CFrame = CFrame.lookAt(camera.CFrame.Position, targetPart.Position)
+        end
+    end
+end))
+
+table.insert(connections, UIS.InputBegan:Connect(function(input, gpe)
+    if gpe or not scriptRunning then return end
+    if input.KeyCode == autoShootHotkey then
+        autoShootEnabled = true
+    end
+end))
+
+table.insert(connections, UIS.InputEnded:Connect(function(input)
+    if input.KeyCode == autoShootHotkey then
+        autoShootEnabled = false
+    end
+end))
+
+table.insert(connections, RunService.Heartbeat:Connect(function()
+    if not autoShootEnabled then return end
+    local targetPart = getClosestPlayerToCrosshair()
+    if targetPart then
+        camera.CFrame = CFrame.lookAt(camera.CFrame.Position, targetPart.Position)
+        
+        local tool = player.Character and player.Character:FindFirstChildOfClass("Tool")
+        if tool then
+            tool:Activate()
+        end
+    end
+end))
 
 table.insert(connections, combatTab.MouseButton1Click:Connect(function()
     content:ClearAllChildren()
     Instance.new("UIListLayout", content).Padding = UDim.new(0,8)
-
+    
     makeButton("Aimbot: " .. (aimbotEnabled and "ON" or "OFF"), function(btn)
         aimbotEnabled = not aimbotEnabled
         btn.Text = "Aimbot: " .. (aimbotEnabled and "ON" or "OFF")
     end)
     
     local infoLabel = Instance.new("TextLabel")
-    infoLabel.Size = UDim2.new(1, -12, 0, 40)
+    infoLabel.Size = UDim2.new(1, -12, 0, 60)
     infoLabel.BackgroundTransparency = 1
-    infoLabel.Text = "Use configured Hotkey to Teleport Behind"
+    infoLabel.Text = "Halte [" .. autoShootHotkey.Name .. "] für Auto-Aim + Auto-Shoot"
     infoLabel.TextColor3 = Color3.fromRGB(0, 255, 200)
     infoLabel.TextScaled = true
     infoLabel.Font = Enum.Font.GothamBold
     infoLabel.Parent = content
-end))
-
--- FIX: Ändert CFrame UND emuliert Mauswinkel, damit die Waffe dorthin schießt!
-table.insert(connections, RunService.RenderStepped:Connect(function()
-    if scriptRunning and aimbotEnabled then
-        local targetPart = getClosestPlayerToCrosshair()
-        if targetPart then
-            -- Zwingt die Kamera direkt auf das Ziel
-            camera.CFrame = CFrame.lookAt(camera.CFrame.Position, targetPart.Position)
-        end
-    end
 end))
 
 table.insert(connections, UIS.InputBegan:Connect(function(input, gpe)
@@ -392,7 +418,6 @@ end))
 
 -- ==================== VISUALS ====================
 local espEnabled = false
-
 local function applyESP(p)
     if p == player then return end
     if espEnabled and p.Character then
@@ -411,7 +436,7 @@ end
 table.insert(connections, visualsTab.MouseButton1Click:Connect(function()
     content:ClearAllChildren()
     Instance.new("UIListLayout", content).Padding = UDim.new(0,8)
-
+    
     makeButton("ESP & Wallhack: " .. (espEnabled and "ON" or "OFF"), function(btn)
         espEnabled = not espEnabled
         btn.Text = "ESP & Wallhack: " .. (espEnabled and "ON" or "OFF")
@@ -425,26 +450,33 @@ table.insert(connections, visualsTab.MouseButton1Click:Connect(function()
     end)
 end))
 
--- ==================== HOTKEY & UNBIND TAB ====================
-local listeningForMenu = false
-local listeningForTP = false
-
+-- ==================== HOTKEY TAB ====================
+local inputConn
 hotkeyTab.MouseButton1Click:Connect(function()
     content:ClearAllChildren()
     Instance.new("UIListLayout", content).Padding = UDim.new(0,8)
-
+    
     local menuBtn = makeButton("Menu Key: " .. menuHotkey.Name, function(btn)
         listeningForMenu = true
         listeningForTP = false
-        btn.Text = "Press any key..."
+        listeningForShoot = false
+        btn.Text = "Drücke eine Taste..."
     end)
-
+    
     local tpBtn = makeButton("Teleport Key: " .. tpHotkey.Name, function(btn)
         listeningForTP = true
         listeningForMenu = false
-        btn.Text = "Press any key..."
+        listeningForShoot = false
+        btn.Text = "Drücke eine Taste..."
     end)
-
+    
+    local shootBtn = makeButton("Auto Aim+Shoot Key: " .. autoShootHotkey.Name, function(btn)
+        listeningForShoot = true
+        listeningForMenu = false
+        listeningForTP = false
+        btn.Text = "Drücke eine Taste..."
+    end)
+    
     local killBtn = Instance.new("TextButton")
     killBtn.Size = UDim2.new(1, -12, 0, 52)
     killBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
@@ -454,22 +486,15 @@ hotkeyTab.MouseButton1Click:Connect(function()
     killBtn.Font = Enum.Font.GothamBold
     killBtn.Parent = content
     Instance.new("UICorner", killBtn).CornerRadius = UDim.new(0, 12)
-
+    
     killBtn.MouseButton1Click:Connect(function()
         scriptRunning = false
         for _, c in ipairs(connections) do if c then c:Disconnect() end end
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p.Character and p.Character:FindFirstChild("PlayerESP") then p.Character.PlayerESP:Destroy() end
-        end
-        pcall(function()
-            if player.Character and player.Character:FindFirstChildOfClass("Humanoid") then
-                player.Character:FindFirstChildOfClass("Humanoid").WalkSpeed = 16
-            end
-        end)
+        if inputConn then inputConn:Disconnect() end
         gui:Destroy()
     end)
-
-    local inputConn
+    
+    if inputConn then inputConn:Disconnect() end
     inputConn = UIS.InputBegan:Connect(function(input, gpe)
         if gpe then return end
         if listeningForMenu then
@@ -482,6 +507,11 @@ hotkeyTab.MouseButton1Click:Connect(function()
             listeningForTP = false
             tpBtn.Text = "Teleport Key: " .. tpHotkey.Name
             inputConn:Disconnect()
+        elseif listeningForShoot then
+            autoShootHotkey = input.KeyCode
+            listeningForShoot = false
+            shootBtn.Text = "Auto Aim+Shoot Key: " .. autoShootHotkey.Name
+            inputConn:Disconnect()
         end
     end)
 end)
@@ -490,7 +520,6 @@ end)
 local function loadTeleportMenu()
     content:ClearAllChildren()
     Instance.new("UIListLayout", content).Padding = UDim.new(0,8)
-
     makeButton("Steal a Brainrot Public", function()
         pcall(function() TeleportService:Teleport(PLACES.BRAINROT, player) end)
     end)
@@ -505,19 +534,18 @@ end
 trollTab.MouseButton1Click:Connect(function()
     content:ClearAllChildren()
     Instance.new("UIListLayout", content).Padding = UDim.new(0,8)
-
     if trollTabUnlocked then
         loadTeleportMenu()
     else
         local promptLabel = Instance.new("TextLabel")
         promptLabel.Size = UDim2.new(1, -12, 0, 45)
         promptLabel.BackgroundTransparency = 1
-        promptLabel.Text = "Please enter the key"
+        promptLabel.Text = "Bitte Key eingeben"
         promptLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
         promptLabel.TextScaled = true
         promptLabel.Font = Enum.Font.GothamSemibold
         promptLabel.Parent = content
-
+        
         local secureInput = Instance.new("TextBox")
         secureInput.Size = UDim2.new(1, -12, 0, 50)
         secureInput.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
@@ -528,7 +556,7 @@ trollTab.MouseButton1Click:Connect(function()
         secureInput.Font = Enum.Font.GothamBold
         secureInput.Parent = content
         Instance.new("UICorner", secureInput).CornerRadius = UDim.new(0, 10)
-
+        
         makeButton("Unlock Options", function()
             if secureInput.Text == TROLL_KEY then
                 trollTabUnlocked = true
@@ -536,12 +564,13 @@ trollTab.MouseButton1Click:Connect(function()
                 loadTeleportMenu()
             else
                 secureInput.Text = ""
-                promptLabel.Text = "Access Denied."
+                promptLabel.Text = "Zugriff verweigert."
                 promptLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
             end
         end)
     end
 end)
 
-movementTab.MouseButton1Click:Fire()
-notify("Bitachi Studios Premium geladen!")
+-- Initialisierung am Ende
+loadMovementMenu()
+notify("Bitachi Studios Premium geladen! (Auto-Shoot hinzugefügt)")
