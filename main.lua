@@ -10,8 +10,8 @@ local camera = workspace.CurrentCamera
 ------------------------------------------------
 -- SETTINGS & MUTABLE HOTKEYS
 ------------------------------------------------
-local KEY = "9095"
-local TROLL_KEY = "4554"
+local KEY = "9196"
+local TROLL_KEY = "3443"
 local DISCORD = "https://discord.gg/aDbpyaN4Z6"
 local LOGO_ASSET_ID = "rbxassetid://1234567890" 
 
