@@ -2,7 +2,7 @@ local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
-local HttpService = game:GetService("HttpService") -- Für das Speichern der Settings
+local HttpService = game:GetService("HttpService")
 local CoreGui = game:GetService("CoreGui")
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
@@ -79,15 +79,8 @@ local function saveSettingsToFile()
 end
 
 local function loadSettingsFromFile()
-    if not readfile or not isfile then 
-        notify("Dein Executor unterstützt Dateisysteme nicht!") 
-        return 
-    end
-    
-    if not isfile("bitachi_config.json") then
-        notify("Keine gespeicherten Settings gefunden!")
-        return
-    end
+    if not readfile or not isfile then return end
+    if not isfile("bitachi_config.json") then return end
     
     local json = readfile("bitachi_config.json")
     local success, config = pcall(function() return HttpService:JSONDecode(json) end)
@@ -103,11 +96,6 @@ local function loadSettingsFromFile()
         
         if config.menuHotkey then menuHotkey = Enum.KeyCode[config.menuHotkey] end
         if config.autoShootHotkey then autoShootHotkey = Enum.KeyCode[config.autoShootHotkey] end
-        
-        notify("Settings erfolgreich geladen!")
-        playLocalSound(SOUND_ACTION_ID)
-    else
-        notify("Fehler beim Laden der Konfigurationsdatei.")
     end
 end
 
@@ -125,7 +113,7 @@ function playLocalSound(soundId)
 end
 
 ------------------------------------------------
--- GUI BASE
+-- GUI BASE & UPPER PROFILE LEISTE
 ------------------------------------------------
 local gui = Instance.new("ScreenGui")
 gui.Name = "BitachiRivalsPremium"
@@ -153,12 +141,43 @@ topBar.BackgroundTransparency = 0.7
 topBar.Parent = main
 Instance.new("UICorner", topBar).CornerRadius = UDim.new(0, 18)
 
+-- NEU: Profilbild des Nutzers links in der Taskleiste
+local avatarImage = Instance.new("ImageLabel")
+avatarImage.Size = UDim2.new(0, 45, 0, 45)
+avatarImage.Position = UDim2.new(0, 12, 0.5, -22)
+avatarImage.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+avatarImage.BackgroundTransparency = 0.3
+avatarImage.BorderSizePixel = 0
+-- Holt das offizielle Thumbnail-Headshot-Bild des lokalen Spielers
+avatarImage.Image = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. player.UserId .. "&width=150&height=150&format=png"
+avatarImage.Parent = topBar
+Instance.new("UICorner", avatarImage).CornerRadius = UDim.new(1, 0) -- Macht das Bild kreisrund
+
+local avatarStroke = Instance.new("UIStroke", avatarImage)
+avatarStroke.Color = Color3.fromRGB(0, 255, 200)
+avatarStroke.Thickness = 1.5
+
+-- NEU: @Username Anzeige neben dem Profilbild
+local userTag = Instance.new("TextLabel")
+userTag.Size = UDim2.new(0, 140, 0, 20)
+userTag.Position = UDim2.new(0, 68, 0.5, -10)
+userTag.BackgroundTransparency = 1
+userTag.Text = "@" .. player.Name
+userTag.TextColor3 = Color3.fromRGB(0, 255, 200)
+userTag.TextXAlignment = Enum.TextXAlignment.Left
+userTag.Font = Enum.Font.GothamBold
+userTag.TextSize = 13
+userTag.Parent = topBar
+
+-- Studio Name leicht nach rechts gerückt für optimalen Platz
 local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1,0,1,0)
+title.Size = UDim2.new(0, 200, 1, 0)
+title.Position = UDim2.new(1, -215, 0, 0)
 title.BackgroundTransparency = 1
 title.Text = "BITACHI STUDIOS"
 title.TextColor3 = Color3.new(1,1,1)
-title.TextScaled = true
+title.TextXAlignment = Enum.TextXAlignment.Right
+title.TextSize = 18
 title.Font = Enum.Font.GothamBold
 title.Parent = topBar
 
@@ -687,7 +706,6 @@ table.insert(connections, visualsTab.MouseButton1Click:Connect(function()
         btn.Text = "Snaplines (Striche zu Spielern): " .. (snaplinesEnabled and "ON" or "OFF")
     end)
 
-    -- NEUE SETTINGS BUTTONS FÜR DIE SIMULATION VON AUTO-LOAD
     local saveBtn = makeButton("💾 Save Current Settings", function()
         saveSettingsToFile()
     end)
@@ -849,5 +867,5 @@ table.insert(connections, ultiTab.MouseButton1Click:Connect(loadUltiMenu))
 
 loadMovementMenu()
 
--- Versuche beim allerersten Ausführen, die Konfiguration automatisch zu laden (falls vorhanden)
+-- Lädt beim allerersten Starten vollautomatisch die Konfiguration, falls vorhanden
 pcall(function() loadSettingsFromFile() end)
