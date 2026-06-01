@@ -2,6 +2,7 @@ local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
+local HttpService = game:GetService("HttpService") -- Für das Speichern der Settings
 local CoreGui = game:GetService("CoreGui")
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
@@ -9,7 +10,7 @@ local camera = workspace.CurrentCamera
 ------------------------------------------------
 -- SETTINGS, CODES & HOTKEYS
 ------------------------------------------------
-local PREMIUM_KEY = "9196"
+local PREMIUM_KEY = "9597"
 local ULTI_CODE = "3883"
 local DISCORD = "https://discord.gg/aDbpyaN4Z6"
 
@@ -47,9 +48,73 @@ local walkSpeedValue = 32
 local savedCFrame = nil
 
 ------------------------------------------------
+-- SAVE / LOAD CONFIGURATION ENGINE
+------------------------------------------------
+local function saveSettingsToFile()
+    if not writefile then 
+        notify("Dein Executor unterstützt 'writefile' nicht!") 
+        return 
+    end
+    
+    local config = {
+        walkSpeedValue = walkSpeedValue,
+        speedEnabled = speedEnabled,
+        infJumpEnabled = infJumpEnabled,
+        aimbotEnabled = aimbotEnabled,
+        espEnabled = espEnabled,
+        snaplinesEnabled = snaplinesEnabled,
+        soundVolume = soundVolume,
+        menuHotkey = menuHotkey.Name,
+        autoShootHotkey = autoShootHotkey.Name
+    }
+    
+    local success, json = pcall(function() return HttpService:JSONEncode(config) end)
+    if success then
+        writefile("bitachi_config.json", json)
+        notify("Settings erfolgreich gespeichert!")
+        playLocalSound(SOUND_ACTION_ID)
+    else
+        notify("Fehler beim Codieren der Settings.")
+    end
+end
+
+local function loadSettingsFromFile()
+    if not readfile or not isfile then 
+        notify("Dein Executor unterstützt Dateisysteme nicht!") 
+        return 
+    end
+    
+    if not isfile("bitachi_config.json") then
+        notify("Keine gespeicherten Settings gefunden!")
+        return
+    end
+    
+    local json = readfile("bitachi_config.json")
+    local success, config = pcall(function() return HttpService:JSONDecode(json) end)
+    
+    if success and config then
+        walkSpeedValue = config.walkSpeedValue or walkSpeedValue
+        speedEnabled = config.speedEnabled or speedEnabled
+        infJumpEnabled = config.infJumpEnabled or infJumpEnabled
+        aimbotEnabled = config.aimbotEnabled or aimbotEnabled
+        espEnabled = config.espEnabled or espEnabled
+        snaplinesEnabled = config.snaplinesEnabled or snaplinesEnabled
+        soundVolume = config.soundVolume or soundVolume
+        
+        if config.menuHotkey then menuHotkey = Enum.KeyCode[config.menuHotkey] end
+        if config.autoShootHotkey then autoShootHotkey = Enum.KeyCode[config.autoShootHotkey] end
+        
+        notify("Settings erfolgreich geladen!")
+        playLocalSound(SOUND_ACTION_ID)
+    else
+        notify("Fehler beim Laden der Konfigurationsdatei.")
+    end
+end
+
+------------------------------------------------
 -- SOUND UTILITY
 ------------------------------------------------
-local function playLocalSound(soundId)
+function playLocalSound(soundId)
     if not scriptRunning or soundVolume <= 0 then return end
     local sound = Instance.new("Sound")
     sound.SoundId = soundId
@@ -125,7 +190,7 @@ end))
 ------------------------------------------------
 -- NOTIFY SYSTEM
 ------------------------------------------------
-local function notify(text)
+function notify(text)
     if not gui or not gui.Parent then return end
     local n = Instance.new("TextLabel")
     n.Size = UDim2.new(0, 320, 0, 55)
@@ -201,14 +266,12 @@ local activeTracers = {}
 local function createTracer(targetPlayer)
     if activeTracers[targetPlayer] then return end
 
-    -- Drawing API Linie erstellen
     local line = Drawing.new("Line")
     line.Thickness = 1.5
-    line.Color = Color3.fromRGB(0, 255, 100) -- Grüner Strich wie im Bild
+    line.Color = Color3.fromRGB(0, 255, 100)
     line.Transparency = 0.8
     line.Visible = false
 
-    -- Billboard für Info (HP, Name, Studs)
     local billboard = Instance.new("BillboardGui")
     billboard.Size = UDim2.new(0, 160, 0, 70)
     billboard.AlwaysOnTop = true
@@ -234,12 +297,10 @@ local function removeTracer(targetPlayer)
     end
 end
 
--- Registrierung für alle Spieler
 for _, p in ipairs(Players:GetPlayers()) do if p ~= player then createTracer(p) end end
 table.insert(connections, Players.PlayerAdded:Connect(function(p) if p ~= player then createTracer(p) end end))
 table.insert(connections, Players.PlayerRemoving:Connect(removeTracer))
 
--- RenderStepped Schleife für flüssige Updates der Striche
 table.insert(connections, RunService.RenderStepped:Connect(function()
     if not scriptRunning then return end
 
@@ -282,12 +343,10 @@ table.insert(connections, RunService.RenderStepped:Connect(function()
             local distance = math.floor((myPos - hrp.Position).Magnitude)
 
             if onScreen and snaplinesEnabled and hum and hum.Health > 0 then
-                -- Linie von unten Mitte zu Spieler zeichnen
                 data.Line.From = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y)
                 data.Line.To = Vector2.new(hrpScreenPos.X, hrpScreenPos.Y)
                 data.Line.Visible = true
 
-                -- Info Text exakt wie auf image_ef7305.jpg formatieren
                 data.Billboard.Adornee = char:FindFirstChild("Head") or hrp
                 data.Billboard.Enabled = true
                 data.Label.Text = string.format("%d HP\n%s\n%d studs", hum.Health, targetPlayer.Name, distance)
@@ -461,7 +520,7 @@ content.BackgroundTransparency = 1
 content.ScrollBarThickness = 2
 content.Parent = main
 
-local function makeButton(text, callback)
+function makeButton(text, callback)
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(1, -12, 0, 52)
     btn.BackgroundColor3 = Color3.fromRGB(20,20,25)
@@ -622,12 +681,22 @@ table.insert(connections, visualsTab.MouseButton1Click:Connect(function()
         end
     end)
 
-    -- NEUER TRACER/SNAPLINES BUTTON (Aus image_ef7305.jpg)
     makeButton("Snaplines (Striche zu Spielern): " .. (snaplinesEnabled and "ON" or "OFF"), function(btn)
         playLocalSound(SOUND_ACTION_ID)
         snaplinesEnabled = not snaplinesEnabled
         btn.Text = "Snaplines (Striche zu Spielern): " .. (snaplinesEnabled and "ON" or "OFF")
     end)
+
+    -- NEUE SETTINGS BUTTONS FÜR DIE SIMULATION VON AUTO-LOAD
+    local saveBtn = makeButton("💾 Save Current Settings", function()
+        saveSettingsToFile()
+    end)
+    saveBtn.TextColor3 = Color3.fromRGB(0, 255, 150)
+
+    local loadBtn = makeButton("📂 Load Saved Settings", function()
+        loadSettingsFromFile()
+    end)
+    loadBtn.TextColor3 = Color3.fromRGB(255, 200, 0)
 end))
 
 -- ==================== TASTENKÜRZEL SYSTEM ====================
@@ -741,7 +810,6 @@ local function loadUltiMenu()
             end
         end)
     else
-        -- GHOST MODE BUTTON
         makeButton("Ghost (Durch Wände laufen): " .. (ghostEnabled and "ON" or "OFF"), function(btn)
             ghostEnabled = not ghostEnabled
             btn.Text = "Ghost (Durch Wände laufen): " .. (ghostEnabled and "ON" or "OFF")
@@ -770,7 +838,6 @@ local function loadUltiMenu()
             end
         end)
 
-        -- TELEPORT BEHIND BUTTON
         makeButton("Teleport behind Player: " .. (tpBehindEnabled and "ON" or "OFF"), function(btn)
             playLocalSound(SOUND_ACTION_ID)
             tpBehindEnabled = not tpBehindEnabled
@@ -781,3 +848,6 @@ end
 table.insert(connections, ultiTab.MouseButton1Click:Connect(loadUltiMenu))
 
 loadMovementMenu()
+
+-- Versuche beim allerersten Ausführen, die Konfiguration automatisch zu laden (falls vorhanden)
+pcall(function() loadSettingsFromFile() end)
